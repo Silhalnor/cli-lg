@@ -1,0 +1,46 @@
+---
+Lemma:
+  - time: "2019-01-14T09:00:00+00:00"
+    data: A
+    kind: B
+    note: "1"
+  - time: "2019-01-14T09:20:00+00:00"
+    data: UVXYZ
+    kind: Y
+    note: "1"
+  - time: "2019-01-14T10:00:00+00:00"
+    data: QWERT
+    kind: Q
+    note: "1"
+  - time: "2019-01-14T10:40:00+00:00"
+    data: "12345"
+    kind: "1"
+    note: "1"
+  - time: "2019-01-14T11:00:00+00:00"
+    data: "67890"
+    kind: "6"
+    note: "1"
+  - time: "2019-08-04T19:47:07.081787802-07:00"
+    data: hello
+    kind: greet
+    note: jkl KILO
+  - time: "2019-08-04T20:17:07.081787802-07:00"
+    data: ""
+    kind: Nil
+    note: ""
+  - time: "2019-08-04T20:17:07.081787802-07:00"
+    data: Hi!
+    kind: greet
+    note: ""
+  - time: "2019-08-04T20:24:44.339654678-07:00"
+    data: Lo
+    kind: greet
+    note: ""
+  - time: "2019-08-04T21:50:50.121428974-07:00"
+    data: Carriage2
+    kind: test
+    note: ""
+  - time: "2019-08-04T22:36:54.023959921-07:00"
+    data: Carriage1
+    kind: test
+    note: ""
