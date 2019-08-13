@@ -3,155 +3,96 @@ use lg_types::{ValidData, RawInit, RawTill, RawStatement};
 use std::env;
 use std::collections::HashMap;
 use unicode_segmentation::UnicodeSegmentation;
-use chrono::prelude::*;
-use serde::{Serialize, Deserialize};
-//use chrono::Duration;
 extern crate unicode_segmentation;
 extern crate chrono;
 extern crate serde_yaml;
 extern crate serde;
 
-/*
-fn test_log() {
-	let ltr1 = "1".to_string();
-	let sz2 = chrono::Duration::minutes(2);
-	let sz3 = chrono::Duration::minutes(3);
-	let mut log = Log::new();
-	// Minute lengths: 2 3 2 4 2
-	log.add(DateTime::parse_from_str("2019 14 09:00 +0000", "%Y %j %H:%M %z").expect("T472"), "A".to_string(), "B".to_string(), ltr1.clone());
-	log.add(DateTime::parse_from_str("2019 14 09:20 +0000", "%Y %j %H:%M %z").expect("T472"), "UVXYZ".to_string(), "Y".to_string(), ltr1.clone());
-	log.add(DateTime::parse_from_str("2019 14 10:00 +0000", "%Y %j %H:%M %z").expect("T472"), "QWERT".to_string(), "Q".to_string(), ltr1.clone());
-	log.add(DateTime::parse_from_str("2019 14 10:40 +0000", "%Y %j %H:%M %z").expect("T472"), "12345".to_string(), "1".to_string(), ltr1.clone());
-	log.add(DateTime::parse_from_str("2019 14 11:00 +0000", "%Y %j %H:%M %z").expect("T472"), "67890".to_string(), "6".to_string(), ltr1.clone());
-
-	let mut beta_log = Log::new();
-	// Length 1
-	beta_log.add(DateTime::parse_from_str("2019 14 9:00 +0000", "%Y %j %H:%M %z").expect("T472"), "^".to_string(), ltr1.clone(), ltr1.clone());
-	beta_log.add(DateTime::parse_from_str("2019 14 10:00 +0000", "%Y %j %H:%M %z").expect("T472"), "*".to_string(), ltr1.clone(), ltr1.clone());
-	beta_log.add(DateTime::parse_from_str("2019 14 11:00 +0000", "%Y %j %H:%M %z").expect("T472"), "^".to_string(), ltr1.clone(), ltr1.clone());
-
-	//println!("Alpha: {}", log.as_string(0.15, "|".to_string()).0);
-	//println!("Beta : {}", beta_log.as_string(1.0/60.0, "".to_string()).0);
-
-	let width = 20;
-	let a_log = log.as_string(width as f32/60.0, "|".to_string()).0;
-	let b_log = beta_log.as_string(1.0/60.0, "".to_string()).0;
-
-	let vec_logs = vec!( (a_log, width), (b_log, 1) );
-	let joined_log = join_logs(vec_logs);
-	println!("\"\n{}\"", joined_log);
-	for entry in log.iter() {
-		println!(":{} : {}", entry.time, entry.data);
-	}
-}*/
-
-
-
 fn infer_kind(data: &str) -> Option<String> {
 	match data {
 		"" => Some("∅".to_string()),
-		"chatting" => Some("leisure".to_string()),
+		"chatting" => Some("Leisure".to_string()),
+		"sleep" => Some("Sleep".to_string()),
+		"slp" => Some("Sleep".to_string()),
+		"break" => Some("Rest".to_string()),
+		"walk" => Some("Exercise".to_string()),
+		"trot" => Some("Exercise".to_string()),
+		"breakfast" => Some("Meal".to_string()),
+		"lunch" => Some("Meal".to_string()),
+		"dinner" => Some("Meal".to_string()),
+		"game" => Some("Rest".to_string()),
+		"distracted" => Some("Distraction".to_string()),
 		data => panic!("Entry is of unknown kind! {}", data),
 	}
 }
 
 
 
-// //// Instruction Definition //// //
+
+fn print_help() {
+	let msg = r#"
+	lg [ _ | @ | • ] [ - | + | • ] [ task | '' | • ]
+
+	Input a task and category type/kind to log it immediately.
+	lg "Task Name" :MyCategory
+
+	To mark when your task is ending, input an empty task.
+	(Or specify a timestamp.)
+	lg ''
+	lg @12:00
+	lg -12:00
+
+	To review the events of the past 24 hours, pass no arguments.
+	lg
+
+	Use the `@` flag to specify when it starts.
+	Use the `-` or `+` flags to specify when it ends.
+	`@13:00` Starts _at_ 13:00.
+	`-14:45` Lasts _till_ 14:45.
+	`+2:00` Lasts _for_ two hours.
+	`+:15` Lasts _for_ fifteen minutes.
+		lg Running :Exercise
+		lg Running :Exercise @14:00 -14:45
+		lg Running :Exercise @14:00 +:45
+
+	The retcon flag, `_`, modifies the currently active event.
+	E.g. If you have put in that you are exercising and it
+	is now 14:10, this will revise it to end at 15:00.
+	Retcon is particularly useful and convenient for making
+	corrections since the current event will often--though
+	not always--be the last inputted command.
+		lg _ -15:00
+		lg _ Jogging :Exercise
+
+	Retcon with no additional specifiers simply tell you
+	what the current and preceding events _are._
+
+	Specifying a time but an empty category type, just `:`
+	with no value, will delete any event starting at that time.
+		lg @11:00 :
+		lg _ :
+
+	Do note that `@` and `-` specify time periods from 12
+	hours in the past and 12 hours in the future. So, if
+	it is now midnight, `@7:00` will reference _tomorrow_
+	morning, not _this_ morning.
+	So, if it is now 17:00 in the afternoon, you can only
+	reference between 5:00 this morning to 4:49 tomorrow.
+	Likewise, if it's 22:00, you can reference between
+	10:00 in the morning to 9:49 tomorrow morning.
+
+"#;
+	println!("{}", msg);
+}
 
 #[derive(Debug)]
-struct RetrievePeriod {
-	start: DateTime<FixedOffset>,
-	end: DateTime<FixedOffset>,
-	period: DateTime<FixedOffset>, //Range. The span each onscreen line is to take up. Or
-	// other metric such as 24-hr blocks if we're printing a 30-day 7x5 calendar.
+enum CLIFlag {
+	Help,
 }
-
-#[derive(Debug, PartialEq)]
-enum InstrInit {
-	Now(DateTime<FixedOffset>),
-	Retcon(DateTime<FixedOffset>),
-	RetNone,
-	Time(DateTime<FixedOffset>),
-}
-
-#[derive(Debug, PartialEq)]
-enum InstrTill {
-	None,
-	Span(chrono::Duration),
-	Halt(DateTime<FixedOffset>),
-}
-
-#[derive(Debug)]
-struct InstrEvent {
-	init: InstrInit,
-	till: InstrTill,
-	data: Option<ValidData>,
-}
-
-fn fill_instruction(init: InstrInit, till: InstrTill, data: ValidData) -> Vec<LogEntry> {
-	//if let InstrInit::RetNone = init {}
-	//else
-	//let init_time = init;
-	let init_time: DateTime<FixedOffset> = match init {
-		InstrInit::Now(now) => now,
-		InstrInit::RetNone => DateTime::parse_from_str("2000 1 0:00 -0700", "%Y %j %H:%M %z").expect("T473"), // Get time of currently active event.
-		InstrInit::Time(time) => time,
-		InstrInit::Retcon(time) => time,//Get timestamp of currently active task.
-	};
-	let mut vec = Vec::<LogEntry>::new();
-	vec.push(LogEntry {
-		time: init_time,
-		data: data.data,
-		kind: data.kind,
-		note: data.note,
-	} );
-	match till {
-		InstrTill::None => (),
-		InstrTill::Span(span) => vec.push(LogEntry {
-			time: init_time + span, // Does span need to be an explicit range type? To be converted to a time?
-			data: "".to_string(),
-			kind: "∅".to_string(),
-			note: "".to_string(),
-		}),
-		InstrTill::Halt(t) => vec.push(LogEntry {
-			time: t,
-			data: "".to_string(),
-			kind: "∅".to_string(),
-			note: "".to_string(),
-		}),
-	}
-	// If vec.len == 2 & vec[1].time > vec[0].time { "Increment vec[1] by 1 day, keeping the same hour." }
-	vec
-}
-
-fn manage_instruction_branches(instr: InstrEvent) -> (Option<RetrievePeriod>, Vec<LogEntry>) {
-	match instr {
-		InstrEvent { init, till, data: Some(data) } =>
-			( None, fill_instruction(init, till, data) ),
-		InstrEvent { init: InstrInit::Retcon(_), till: InstrTill::None, data: None } =>
-			unimplemented!("Set the currently active entry to nil or retrieve and print it?"),
-		InstrEvent { init: InstrInit::Time(_), till: InstrTill::None, data: None } =>
-			unimplemented!("Set time to nil."),
-		InstrEvent { init: InstrInit::Now(_), till: InstrTill::None, data: None } =>
-			unimplemented!("Retrieve and print the day."),
-		InstrEvent { init: InstrInit::Retcon(_), till: InstrTill::Span(_), data: None }
-		| InstrEvent { init: InstrInit::Retcon(_), till: InstrTill::Halt(_), data: None }
-		| InstrEvent { init: InstrInit::Now(_), till: InstrTill::Span(_), data: None }
-		| InstrEvent { init: InstrInit::Now(_), till: InstrTill::Halt(_), data: None } =>
-		//| InstrEvent { init: (InstrInit::Retcon(_), InstrInit::Now(_)), till: (InstrTill::Span(_), InstrTill::Halt(_)), data: None } =>
-			unimplemented!("Retroactively end the current task at time T. (Warn if nil.)"),
-		InstrEvent { init: InstrInit::Time(_), till: InstrTill::Span(_), data: None }
-		| InstrEvent { init: InstrInit::Time(_), till: InstrTill::Halt(_), data: None } =>
-			unimplemented!("Set this timeframe as nil or retrieve and print this timeframe."),
-		InstrEvent { init: InstrInit::RetNone, .. } =>
-			panic!("Unexpected RetNone received in `manage_instruction_branches`!"),
-	}
-}
-
 
 #[derive(Debug)]
 enum CLIArgType<'a> {
+	Flag(CLIFlag),
 	Retcon,
 	AtTime(&'a str),
 	TillTime(&'a str),
@@ -162,6 +103,10 @@ enum CLIArgType<'a> {
 
 
 fn match_arg_type(arg: &str) -> CLIArgType {
+	if (arg == "-h") | (arg == "--help") {
+		return CLIArgType::Flag(CLIFlag::Help);
+	}
+
 	let mut arg_iter = UnicodeSegmentation::graphemes(arg, true);
 	let prefix: &str = match arg_iter.next() {
 		Some(chr) => chr,
@@ -178,8 +123,8 @@ fn match_arg_type(arg: &str) -> CLIArgType {
 	}
 }
 
-fn parse_commit_args<'a>(args: Vec<&str>) -> RawStatement {
-	use lg_types::{RawStatement, RawInit, RawTill};
+fn parse_commit_args<'a>(args: Vec<&str>) -> Option<RawStatement> {
+	//use lg_types::{RawStatement, RawInit, RawTill};
 	let mut init = RawInit::Now;
 	let mut till = RawTill::Nil;
 	let mut data: Option<String> = None;
@@ -189,6 +134,7 @@ fn parse_commit_args<'a>(args: Vec<&str>) -> RawStatement {
 	// Parse arguments into their appropriate types.
 	for arg in args {
 		match match_arg_type(arg) {
+			CLIArgType::Flag(CLIFlag::Help) => {print_help(); return None;},
 			CLIArgType::Retcon if init != RawInit::Now => panic!("Retcon \"_\" flag already used!"),
 			CLIArgType::AtTime(t) if init != RawInit::Now => panic!("\"@00:00\" or retcon \"_\" flag already used! @{}", t),
 			CLIArgType::TillTime(t) if till != RawTill::Nil => panic!("\"+/-\" flag already used! -{}", t),
@@ -215,11 +161,12 @@ fn parse_commit_args<'a>(args: Vec<&str>) -> RawStatement {
 	let data: Option<ValidData> = match (kind, data, note.len() > 0) {
 		(None, None, false) => None,
 		(Some(kind), Some(data), _) => Some(ValidData { kind, data, note }),
-		(Some(_), _, _) => panic!("No data provided."),
+		(Some(ref kind), None, _) if kind == "" => Some(ValidData { kind: "".to_string(), data: "".to_string(), note }),
+		(Some(_), None, _) => panic!("No data provided."),
 		(_, Some(_), _) => panic!("No kind provided."),
 		(None, None, true) => panic!("Notes provided but no kind nor data."),
 	};
-	RawStatement { init, till, data }
+	Some(RawStatement { init, till, data })
 }
 
 fn read_log(file_path: &str) -> HashMap<String, Log> {
@@ -253,11 +200,12 @@ fn record_log(file_path: &str, log_set: HashMap<String, &::lg::log::Log>) {
 
 	let file_path = std::path::Path::new(file_path);
 	let file = std::fs::File::create(file_path).expect("Log file not found.");
-	if let Err(err) = serde_yaml::to_writer(file, &min_log) {
+	if let Err(_err) = serde_yaml::to_writer(file, &min_log) {
 		panic!("Log serialization failed.");
 	}
 }
 
+/*
 fn new_test_log() -> Log {let ltr1 = "1".to_string();
 	let sz2 = chrono::Duration::minutes(2);
 	let sz3 = chrono::Duration::minutes(3);
@@ -269,47 +217,42 @@ fn new_test_log() -> Log {let ltr1 = "1".to_string();
 	log.add(DateTime::parse_from_str("2019 14 10:40 +0000", "%Y %j %H:%M %z").expect("T472"), "12345".to_string(), "1".to_string(), ltr1.clone());
 	log.add(DateTime::parse_from_str("2019 14 11:00 +0000", "%Y %j %H:%M %z").expect("T472"), "67890".to_string(), "6".to_string(), ltr1.clone());
 	log
-}
+}*/
+
+/*
+	lg			# Alias for lg hr 24.
+	lg day		# Alias for lg day 28.
+	lg hr 24	# A day
+	lg day 28	# 4 weeks
+	lg week 24	# 6 months
+	lg day Feb4-Feb10	# 7 days. Assumes this year.
+	lg day 19Feb4-19Feb10
+	lg day 4-10
+	lg hr 14:37-15:00
+	lg hr :37-:00
+	lg hr 14-16
+*/
 
 fn main() {
-	let mut log = read_log("/home/lemma/Documents/lg/serde_test.yml")
+	let log_path = "/home/lemma/lglog.yml";
+	let mut log = read_log(log_path)
 		.remove("Lemma")
 		.unwrap();
-	// Manual arg parsing
-	/*let (log_period, entries) = match argparse(last_lemma_stamp) {
-		cli_call::Retrieval => (),
-		cli_call::Commit(c) => manage_instruction_branches(c),
-	};*/
-	//let log = new_test_log();
-	let cmd = parse_commit_args(env::args().skip(1)
-										   .collect::<Vec<String>>()
-										   .iter()
-										   .map(AsRef::as_ref)
-										   .collect::<Vec<&str>>());
-	//let cmd = compile_command(cmd);
-	let cmd = process_command(cmd, &mut log);
-	println!("{:?}", cmd);
-	for entry in cmd {
-		log.push(entry);
+	match parse_commit_args(env::args().skip(1)
+									   .collect::<Vec<String>>()
+									   .iter()
+									   .map(AsRef::as_ref)
+									   .collect::<Vec<&str>>()) {
+		Some(cmd) => {
+			let cmd = process_command(cmd, &mut log);
+			for entry in cmd {
+				//println!("{:#?}", entry);
+				log.update(entry);
+			}
+			let mut log_map = HashMap::new();
+			log_map.insert("Lemma".to_string(), &log);
+			record_log(log_path, log_map);
+		},
+		None => (),
 	}
-	let mut log_map = HashMap::new();
-	log_map.insert("Lemma".to_string(), &log);
-	record_log("/home/lemma/Documents/lg/serde_test.yml", log_map);
-	//for e in entries {
-	//	println!("e. {}", e);
-	//}
-
-	/* clap arg parsing
-	let yaml = load_yaml!("cli.yml");
-	let matches = App::from_yaml(yaml).get_matches();
-	let data: String = match matches.value_of("test") {
-		Some(x) => x.to_string(),
-		None => "".to_string(),
-	};
-	println!("CLI: {}", data);
-	*/
-
-	//let test_val = test_histogram();
-	//println!("{}", test_val);
-	//test_log();
 }
